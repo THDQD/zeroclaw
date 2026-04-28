@@ -78,7 +78,13 @@ phase() { echo "" >&2; echo "[phase $1/$2] $3" >&2; }
 fail() {
     local code="$1"; shift
     echo "ERROR: $*" >&2
-    emit_status "$1"
+    case "$code" in
+        "$EX_MERGE_CONFLICT") emit_status "merge_conflict" ;;
+        "$EX_WORKFLOW_CHANGES") emit_status "workflow_changes_detected" ;;
+        "$EX_CARGO_CHECK") emit_status "cargo_check_failed" ;;
+        "$EX_PRECONDITION") emit_status "precondition_failure" ;;
+        *) emit_status "error" ;;
+    esac
     exit "$code"
 }
 emit_status() { echo "STATUS: $1"; }
