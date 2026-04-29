@@ -10715,7 +10715,7 @@ This is an example JSON object for profile settings."#;
             auth_token: "test-token".to_string(),
         });
 
-        let channels = collect_configured_channels(&config, "test");
+        let channels = collect_configured_channels(&config, "test", &[]);
 
         assert!(
             channels
