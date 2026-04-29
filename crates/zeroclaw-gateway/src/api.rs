@@ -786,6 +786,37 @@ pub async fn handle_api_cli_tools(
     Json(serde_json::json!({"cli_tools": tools})).into_response()
 }
 
+/// GET /api/channels — list configured channels with status
+pub async fn handle_api_channels(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    if let Err(e) = require_auth(&state, &headers) {
+        return e.into_response();
+    }
+
+    let config = state.config.lock().clone();
+    let channels: Vec<serde_json::Value> = config
+        .channels
+        .channels()
+        .into_iter()
+        .filter(|(_, present)| *present)
+        .map(|(ch, _)| {
+            serde_json::json!({
+                "name": ch.name(),
+                "type": ch.name(),
+                "enabled": true,
+                "status": "active",
+                "message_count": 0,
+                "last_message_at": null,
+                "health": "healthy",
+            })
+        })
+        .collect();
+
+    Json(serde_json::json!({ "channels": channels })).into_response()
+}
+
 /// GET /api/health — component health snapshot
 pub async fn handle_api_health(
     State(state): State<AppState>,
@@ -1573,7 +1604,7 @@ pub async fn handle_api_session_abort(
 // ── Claude Code hook endpoint ────────────────────────────────────
 
 /// POST /hooks/claude-code — receives HTTP hook events from Claude Code
-/// sessions spawned by [`ClaudeCodeRunnerTool`].
+/// sessions spawned by `ClaudeCodeRunnerTool`.
 ///
 /// Claude Code posts structured JSON describing tool executions, completions,
 /// and errors. This handler logs the event and (when a Slack channel is
@@ -1675,7 +1706,7 @@ mod tests {
             _system_prompt: Option<&str>,
             _message: &str,
             _model: &str,
-            _temperature: f64,
+            _temperature: Option<f64>,
         ) -> anyhow::Result<String> {
             Ok("ok".to_string())
         }
