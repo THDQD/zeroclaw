@@ -280,14 +280,28 @@ phase 6 13 "build web dashboard"
 if [ "$DRY_RUN" -eq 1 ]; then
     log "(dry-run) would: docker run ... npm ci && npm run build (in /work/web)"
 else
-    docker run --rm \
-        -u "$(id -u):$(id -g)" \
-        -v "$PWD:/work" \
-        -w /work/web \
-        "$BUILDER_IMAGE" \
-        sh -c 'rm -rf dist && npm ci && npm run build' 2>&1 | tail -10 >&2
+    # HOME=/tmp so npm's cache (default $HOME/.npm) lands in the container's
+    # ephemeral /tmp instead of an unwritable path when `-u` strips root.
+    if ! docker run --rm \
+            -u "$(id -u):$(id -g)" \
+            -v "$PWD:/work" \
+            -w /work/web \
+            -e HOME=/tmp \
+            "$BUILDER_IMAGE" \
+            sh -c 'rm -rf dist && npm ci && npm run build' 2>&1 | tail -10 >&2; then
+        log "web build failed"
+        if [ "${PHASE3_COMMITTED:-0}" -eq 1 ]; then
+            log "rolling back version-bump commit"
+            git reset --hard HEAD^
+        fi
+        fail 1 "npm ci/build failed; see log above"
+    fi
 
     if [ ! -d web/dist ]; then
+        if [ "${PHASE3_COMMITTED:-0}" -eq 1 ]; then
+            log "rolling back version-bump commit"
+            git reset --hard HEAD^
+        fi
         fail 1 "expected web/dist/ not found after npm run build"
     fi
 fi
