@@ -124,6 +124,27 @@ fn apply_auth_to_request(
     }
 }
 
+#[derive(Deserialize)]
+struct ModelsResponse {
+    data: Vec<ModelEntry>,
+}
+
+#[derive(Deserialize)]
+struct ModelEntry {
+    id: String,
+}
+
+fn normalize_model_ids(body: ModelsResponse) -> Vec<String> {
+    let mut ids: Vec<String> = body
+        .data
+        .into_iter()
+        .map(|e| e.id.trim().to_string())
+        .filter(|id| !id.is_empty())
+        .collect();
+    ids.sort();
+    ids
+}
+
 impl OpenAiCompatibleProvider {
     pub fn new(
         name: &str,
@@ -1779,25 +1800,10 @@ impl Provider for OpenAiCompatibleProvider {
                 let status = response.status();
                 anyhow::bail!("{} model list failed at {url}: HTTP {status}", self.name);
             }
-            #[derive(serde::Deserialize)]
-            struct ModelsResponse {
-                data: Vec<ModelEntry>,
-            }
-            #[derive(serde::Deserialize)]
-            struct ModelEntry {
-                id: String,
-            }
             let body: ModelsResponse = response.json().await.map_err(|e| {
                 anyhow::anyhow!("{} model list returned invalid JSON: {e}", self.name)
             })?;
-            let mut ids: Vec<String> = body
-                .data
-                .into_iter()
-                .map(|e| e.id.trim().to_string())
-                .filter(|id| !id.is_empty())
-                .collect();
-            ids.sort();
-            return Ok(ids);
+            return Ok(normalize_model_ids(body));
         }
         // No credential — fall back to the models.dev catalog when available.
         match &self.models_dev_key {
@@ -2622,6 +2628,20 @@ mod tests {
             !err_msg.contains("API key not set"),
             "should not get credential error, got: {err_msg}"
         );
+    }
+
+    #[test]
+    fn normalize_model_ids_trims_filters_and_sorts() {
+        let body = serde_json::from_value(serde_json::json!({
+            "data": [
+                {"id": " zeta-model "},
+                {"id": ""},
+                {"id": "alpha-model"}
+            ]
+        }))
+        .unwrap();
+
+        assert_eq!(normalize_model_ids(body), vec!["alpha-model", "zeta-model"]);
     }
 
     #[test]
